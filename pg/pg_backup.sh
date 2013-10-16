@@ -5,14 +5,16 @@
 # Author
 #  |
 #  +-- speedboy (speedboy_420 at hotmail dot com)
+#  +-- Rodrigo Ramírez Norambuena (rodrigo at  blackhole dot cl)
 #
 # Last modified
 #  |
 #  +-- 16-10-2001
+#  +-- 16-10-2013
 #  
 # Version
 #  |
-#  +-- 1.1.2
+#  +-- 1.2.0
 #
 # Description
 #  |
@@ -23,6 +25,7 @@
 #  |
 #  +-- Postgresql
 #  |    |  
+#  |    +-- 8.3.9
 #  |    +-- 7.1.3
 #  |    +-- 7.1.2
 #  |    +-- 7.1
@@ -30,6 +33,7 @@
 #  |
 #  +-- Operating systems
 #  |    |
+#  |    +-- Debian 5.0
 #  |    +-- Linux Redhat 6.2
 #  |    +-- Linux Mandrake 7.2
 #  |    +-- FreeBSD 4.3
@@ -166,6 +170,9 @@ exclusions="template postgres"
 # Databases to include from the backup process (separated by a space)
 list_database_backup=""
 
+# Tables to exclude from the backup process (separated by a space)
+exclude_tables=""
+
 
 # Backup format
 #  |
@@ -275,13 +282,29 @@ set_permissions() {
 	chmod -f $permissions_backup_dir "$location_backup_dir/`date +%B-%Y`/$date_info"
 }
 
+#Run pg_dump
+run_pg_dump() { 
+	db=$1
+	if [ "$exclude_tables" = "" ]; then
+		"$location_binaries/pg_dump" $backup_args -h $postgresql_hostname $db > "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$db-backup"
+	else
+
+		for T in $exclude_tables; do
+			t_exclude="$t_exclude -T $T"
+		done
+		
+		"$location_binaries/pg_dump" $backup_args $t_exclude -h $postgresql_hostname $db > "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$db-backup"
+
+	fi
+}
+
 # Run backup
 run_b() {
 	for i in $databases; do
 		start_time=`date '+%s'`
 		timeinfo=`date '+%T %x'`
 		
-		"$location_binaries/pg_dump" $backup_args -h $postgresql_hostname $i > "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup"
+		run_pg_dump $i
 		if [ "$backup_gzip" = "yes" ]; then
 			gzip "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup"
 			chmod $permissions_backup_file "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup.gz"	
@@ -302,7 +325,7 @@ run_bv() {
 		timeinfo=`date '+%T %x'`
 		
 		"$location_binaries/vacuumdb" -h $postgresql_hostname -U $postgresql_username $i >/dev/null 2>&1
-		"$location_binaries/pg_dump" $backup_args -h $postgresql_hostname $i > "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup"
+		run_pg_dump $i
 		if [ "$backup_gzip" = "yes" ]; then
 			gzip "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup"
 			chmod $permissions_backup_file "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup.gz"	
@@ -323,7 +346,7 @@ run_bva() {
 		timeinfo=`date '+%T %x'`
 		
 		"$location_binaries/vacuumdb" -z -h $postgresql_hostname -U $postgresql_username $i >/dev/null 2>&1
-		"$location_binaries/pg_dump" $backup_args -h $postgresql_hostname $i > "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup"
+		run_pg_dump $i
 		if [ "$backup_gzip" = "yes" ]; then
 			gzip "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup" 
 			chmod $permissions_backup_file "$location_backup_dir/`date +%B-%Y`/$date_info/$current_time-postgresql_database-$i-backup.gz"
@@ -465,6 +488,19 @@ print_configtest() {
 		done
 		echo ""
 	fi
+
+	# Tables that will not be backed up
+	echo -n "Tables that will not be backed up :"
+	echo ""
+	if [ "$exclude_tables" = "" ]; then
+		echo "                                       none"
+	else
+		for i in $exclude_tables; do
+			echo "                                       $i"
+		done
+		echo ""
+	fi
+
 
 	# Check if the backups location is writable
 	echo "Checking permissions:"
